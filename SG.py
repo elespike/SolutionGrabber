@@ -1,14 +1,17 @@
 import logging
 import re
 from argparse import ArgumentParser, RawTextHelpFormatter
-from distutils import dir_util, errors
-from os import path, makedirs
+from os import access, W_OK, path, chmod, makedirs
+from shutil import copytree, rmtree, Error
+from stat import S_IWUSR
 from sys import stdout
-from urllib.parse import unquote
 
-ALL = 0
-CSH = 1
-CPP = 2
+try:
+    # Python 3
+    from urllib.parse import unquote
+except ImportError:
+    # Python 2
+    from urllib import unquote
 
 
 def grab_solution(sln_file, sln_lines, lang, parent_destination):
@@ -44,7 +47,7 @@ def grab_solution(sln_file, sln_lines, lang, parent_destination):
                     makedirs(dst_proj_path)
                     info_created_dst_path(dst_proj_path)
                 except IOError:
-                    err_write_fail(dst_proj_path)
+                    err_create_dir_fail(dst_proj_path)
             if path.isfile(src_proj_name):
                 try:
                     with open(src_proj_name, 'r') as a:
@@ -57,7 +60,7 @@ def grab_solution(sln_file, sln_lines, lang, parent_destination):
                 try:
                     with open(dst_proj_name, 'w') as a:
                         a.write(data)
-                        info_copied_file(src_proj_name, dst_proj_path)
+                    info_copied_file(src_proj_name, dst_proj_path)
                 except IOError:
                     err_write_fail(dst_proj_name)
             else:
@@ -82,7 +85,7 @@ def grab_project(proj_lines, sourcedir, parent_destination):
                         makedirs(target_dir)
                         info_created_dst_path(target_dir)
                     except IOError:
-                        err_write_fail(target_dir)
+                        err_create_dir_fail(target_dir)
             source_file_path = unquote(path.join(sourcedir, resource))
             if path.isfile(source_file_path):
                 try:
@@ -95,7 +98,7 @@ def grab_project(proj_lines, sourcedir, parent_destination):
                 try:
                     with open(destination_file_path, 'w') as a:
                         a.write(data)
-                        info_copied_file(source_file_path, target_dir)
+                    info_copied_file(source_file_path, target_dir)
                 except IOError:
                     err_write_fail(destination_file_path)
             else:
@@ -126,6 +129,10 @@ def err_write_fail(filename):
     logging.exception('Unable to write, skipping "{}".'.format(filename))
 
 
+def err_create_dir_fail(filename):
+    logging.exception('Unable to create dir(s), skipping "{}".'.format(filename))
+
+
 def remove_invalid_chars(_path):
     bad_set = ['<', '>', '"', '|', '?', '*']
     for char in bad_set:
@@ -135,7 +142,21 @@ def remove_invalid_chars(_path):
     return _path
 
 
+# From http://stackoverflow.com/questions/2656322/python-shutil-rmtree-fails-on-windows-with-access-is-denied
+def handle_readonly(function, pathname, exc_info):
+    if not access(pathname, W_OK):
+        # Is the error an access error ?
+        chmod(pathname, S_IWUSR)
+        function(pathname)
+    else:
+        raise
+
+
 if __name__ == '__main__':
+    ALL = 0
+    CSH = 1
+    CPP = 2
+
     parser = ArgumentParser(description='This program will read a supplied text file containing paths,'
                                         'one per line, to specific directories or files to be copied.\r\n'
                                         'If the path points to a specific file,\r\n\t'
@@ -156,6 +177,9 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--out', default='C:\\SolutionGrabber', type=str,
                         help='Specifies the output directory. E.g., "Path" for "<working dir>\Path" or "D:\Path".\r\n'
                              'Default, "C:\\SolutionGrabber."')
+    parser.add_argument('-p', '--purge', action='store_true', dest='purge',
+                        help='Purges the output directory prior to copying any specified files,\r\n'
+                             'recursively deleting all of its contents. Off by default.')
     parser.add_argument('-v', '--verbosity', default=2, type=int,
                         help='Specifies which levels of logging messages to show.\r\n'
                              '\t1: Errors only\r\n'
@@ -184,12 +208,19 @@ if __name__ == '__main__':
 
     outdir = remove_invalid_chars(args.out)
     logging.debug('outdir is "{}".'.format(outdir))
+    if path.isdir(outdir):
+        if args.purge:
+            try:
+                rmtree(outdir, onerror=handle_readonly)
+                logging.info('Purged directory "{}".'.format(outdir))
+            except OSError:
+                logging.exception('Error purging output directory "{}". Details below:'.format(outdir))
     if not path.isdir(outdir):
         try:
             makedirs(outdir)
             info_created_dst_path(outdir)
         except IOError:
-            err_write_fail(outdir)
+            err_create_dir_fail(outdir)
 
     proj_type = ALL
     if args.csh:
@@ -223,12 +254,12 @@ if __name__ == '__main__':
                     makedirs(destination_path)
                     info_created_dst_path(destination_path)
                 except IOError:
-                    err_write_fail(destination_path)
+                    err_create_dir_fail(destination_path)
             destination_name = destination_path + fname
             try:
                 with open(destination_name, 'w') as f:
                     f.write(file_data)
-                    info_copied_file(source, destination_path)
+                info_copied_file(source, destination_path)
             except IOError:
                 err_write_fail(destination_name)
             if source.endswith('sln'):
@@ -237,10 +268,10 @@ if __name__ == '__main__':
                 grab_project(file_lines, remove_invalid_chars(path.dirname(source)), destination_path)
         elif path.isdir(source):
             try:
-                dir_util.copy_tree(source, outdir + source.replace(':', ''), preserve_symlinks=True)
+                copytree(source, outdir + source.replace(':', ''))
                 logging.info('Recursively copied entire directory "{}" into output directory.'.format(source))
-            except errors.DistutilsFileError:
-                logging.exception('Error copying directory for "{}". Details below:')
+            except Error:
+                logging.exception('Error copying directory "{}" into output directory. Details below:'.format(source))
                 continue
         else:
             warn_filenotfound(source)
