@@ -48,7 +48,7 @@ def grab_solution(sln_file, sln_lines, lang, parent_destination):
                     info_created_dst_path(dst_proj_path)
                 except IOError:
                     err_create_dir_fail(dst_proj_path)
-            if path.isfile(src_proj_name):
+            if path.isfile(src_proj_name) and src_proj_name not in excluded_sources:
                 try:
                     with open(src_proj_name, 'r') as a:
                         data = a.read()
@@ -87,7 +87,7 @@ def grab_project(proj_lines, sourcedir, parent_destination):
                     except IOError:
                         err_create_dir_fail(target_dir)
             source_file_path = unquote(path.join(sourcedir, resource))
-            if path.isfile(source_file_path):
+            if path.isfile(source_file_path) and source_file_path not in excluded_sources:
                 try:
                     with open(source_file_path, 'r') as a:
                         data = a.read()
@@ -229,10 +229,22 @@ if __name__ == '__main__':
         proj_type = args.cpp
 
     sources = [source.rstrip() for source in args.text_file.readlines()]
+    global excluded_sources
+    excluded_sources = []
+    included_sources = []
     for source in sources:
         if source.startswith('#'):
             logging.info('Skipping "{}".'.format(source))
             continue
+        elif source.startswith('!'):
+            logging.info('Excluding "{}".'.format(source))
+            excluded_sources.append(source.replace('!', '', 1).lstrip())
+            continue
+        else:
+            logging.info('Including "{}".'.format(source))
+            included_sources.append(source)
+
+    for source in included_sources:
         logging.info('Attempting to grab "{}".'.format(source))
         if path.isfile(source):
             file_lines = []
