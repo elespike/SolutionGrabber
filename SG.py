@@ -1,10 +1,10 @@
 import logging
 import re
 from argparse import ArgumentParser, RawTextHelpFormatter
-from os import access, W_OK, path, chmod, makedirs
-from shutil import copytree, rmtree, Error
-from stat import S_IWUSR
-from sys import stdout
+from os       import access, W_OK, path, chmod, makedirs
+from shutil   import copytree, rmtree, Error
+from stat     import S_IWUSR
+from sys      import stdout
 
 try:
     # Python 3
@@ -34,38 +34,40 @@ def grab_solution(sln_file, sln_lines, lang, parent_destination):
                 if unfiltered_search is None:
                     warn_parse_fail(file_line)
                 continue
-            src_proj_name = parent_source + search.group(1)
-            logging.debug('src_proj_name is "{}".'.format(src_proj_name))
-            dst_proj_name = parent_destination + search.group(1)
-            logging.debug('dst_proj_name is "{}".'.format(dst_proj_name))
-            src_proj_path = remove_invalid_chars(path.dirname(src_proj_name))
-            logging.debug('src_proj_path is "{}".'.format(src_proj_path))
-            dst_proj_path = remove_invalid_chars(path.dirname(dst_proj_name))
-            logging.debug('dst_proj_path is "{}".'.format(dst_proj_path))
-            if not path.isdir(dst_proj_path):
+
+            source_proj_path      = parent_source      + search.group(1)
+            destination_proj_path = parent_destination + search.group(1)
+            source_proj_dir       = remove_invalid_chars(path.dirname(source_proj_path))
+            destination_proj_dir  = remove_invalid_chars(path.dirname(destination_proj_path))
+            logging.debug('source_proj_path is "{}".'     .format(source_proj_path))
+            logging.debug('destination_proj_path is "{}".'.format(destination_proj_path))
+            logging.debug('source_proj_dir is "{}".'      .format(source_proj_dir))
+            logging.debug('destination_proj_dir is "{}".' .format(destination_proj_dir))
+
+            if not path.isdir(destination_proj_dir):
                 try:
-                    makedirs(dst_proj_path)
-                    info_created_dst_path(dst_proj_path)
+                    makedirs(destination_proj_dir)
+                    info_created_destination_path(destination_proj_dir)
                 except IOError:
-                    err_create_dir_fail(dst_proj_path)
-            if path.isfile(src_proj_name) and src_proj_name not in excluded_sources:
+                    err_create_dir_fail(destination_proj_dir)
+
+            if path.isfile(source_proj_path) and include_source(source_proj_path):
                 try:
-                    with open(src_proj_name, 'r') as a:
+                    with open(source_proj_path, 'r') as a:
                         data = a.read()
                         a.seek(0)
-                        grab_project(a.readlines(), src_proj_path, dst_proj_path)
+                        grab_project(a.readlines(), source_proj_dir, destination_proj_dir)
                 except IOError:
-                    err_read_fail(src_proj_name)
+                    err_read_fail(source_proj_path)
                     continue
                 try:
-                    with open(dst_proj_name, 'w') as a:
+                    with open(destination_proj_path, 'w') as a:
                         a.write(data)
-                    info_copied_file(src_proj_name, dst_proj_path)
+                    info_copied_file(source_proj_path, destination_proj_dir)
                 except IOError:
-                    err_write_fail(dst_proj_name)
+                    err_write_fail(destination_proj_path)
             else:
-                warn_filenotfound(src_proj_name)
-
+                warn_filenotfound(source_proj_path)
 
 def grab_project(proj_lines, sourcedir, parent_destination):
     for proj_line in proj_lines:
@@ -76,6 +78,7 @@ def grab_project(proj_lines, sourcedir, parent_destination):
             if search is None:
                 warn_parse_fail(proj_line)
                 continue
+
             resource = search.group(1)
             target_dir = remove_invalid_chars(parent_destination + path.dirname(resource))
             logging.debug('target_dir is "{}".'.format(target_dir))
@@ -83,11 +86,12 @@ def grab_project(proj_lines, sourcedir, parent_destination):
                 if not path.isdir(target_dir):
                     try:
                         makedirs(target_dir)
-                        info_created_dst_path(target_dir)
+                        info_created_destination_path(target_dir)
                     except IOError:
                         err_create_dir_fail(target_dir)
+
             source_file_path = unquote(path.join(sourcedir, resource))
-            if path.isfile(source_file_path) and source_file_path not in excluded_sources:
+            if path.isfile(source_file_path) and include_source(source_file_path):
                 try:
                     with open(source_file_path, 'r') as a:
                         data = a.read()
@@ -104,34 +108,32 @@ def grab_project(proj_lines, sourcedir, parent_destination):
             else:
                 warn_filenotfound(source_file_path)
 
+def include_source(source_path):
+    for source in excluded_sources:
+        if source in source_path:
+            return False
+    return True
 
-def info_created_dst_path(dst_path):
-    logging.info('Created destination path "{}".'.format(dst_path))
+def info_created_destination_path(destination_path):
+    logging.info('Created destination path "{}".'.format(destination_path))
 
-
-def info_copied_file(filename, dst_path):
-    logging.info('Copied\t"{}"\r\n\tinto\t"{}".'.format(filename, dst_path))
-
+def info_copied_file(filename, destination_path):
+    logging.info('Copied\t"{}"\r\n\tinto\t"{}".'.format(filename, destination_path))
 
 def warn_filenotfound(filepath):
-    logging.warning('File not found, skipping "{}".'.format(filepath))
-
+    logging.warning('File excluded or not found, skipping "{}".'.format(filepath))
 
 def warn_parse_fail(line):
     logging.warning('Unable to parse, skipping "{}".'.format(line))
 
-
 def err_read_fail(filename):
     logging.exception('Unable to read, skipping "{}".'.format(filename))
-
 
 def err_write_fail(filename):
     logging.exception('Unable to write, skipping "{}".'.format(filename))
 
-
 def err_create_dir_fail(filename):
     logging.exception('Unable to create dir(s), skipping "{}".'.format(filename))
-
 
 def remove_invalid_chars(_path):
     bad_set = ['<', '>', '"', '|', '?', '*']
@@ -140,7 +142,6 @@ def remove_invalid_chars(_path):
     if not _path.endswith('\\'):
         _path += '\\'
     return _path
-
 
 # From http://stackoverflow.com/questions/2656322/python-shutil-rmtree-fails-on-windows-with-access-is-denied
 def handle_readonly(function, pathname, exc_info):
@@ -218,7 +219,7 @@ if __name__ == '__main__':
     if not path.isdir(outdir):
         try:
             makedirs(outdir)
-            info_created_dst_path(outdir)
+            info_created_destination_path(outdir)
         except IOError:
             err_create_dir_fail(outdir)
 
@@ -264,7 +265,7 @@ if __name__ == '__main__':
             if not path.isdir(destination_path):
                 try:
                     makedirs(destination_path)
-                    info_created_dst_path(destination_path)
+                    info_created_destination_path(destination_path)
                 except IOError:
                     err_create_dir_fail(destination_path)
             destination_name = destination_path + fname
@@ -288,3 +289,4 @@ if __name__ == '__main__':
         else:
             warn_filenotfound(source)
             continue
+
