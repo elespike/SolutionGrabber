@@ -8,13 +8,13 @@ If the path points to a specific directory, SG will recursively copy the directo
 
 If the path points to a Visual Studio solution or project file, SG will copy all referenced files.
 
-####Please note:
+##Please note:
 Existing files will be overwritten.
 
 Directory structure will be maintained whenever possible.
 
 Lines in the supplied text file starting with '#' will be ignored; lines starting with '!' will be excluded.
->Examples:
+>Examples:  
 "# this is a comment" will be ignored entirely.
 >
 "! file.csproj" and all included source files will not be copied even if other .sln or .csproj files include file.csproj.
