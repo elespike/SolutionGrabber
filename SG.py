@@ -1,8 +1,7 @@
 from argparse import ArgumentParser, RawTextHelpFormatter
 from os       import access, W_OK, path, chmod, makedirs
-from random   import randint
 from re       import search
-from shutil   import copytree, rmtree, Error
+from shutil   import copytree, rmtree, Error as shutil_error
 from stat     import S_IWUSR
 from sys      import stdout
 
@@ -312,7 +311,7 @@ if __name__ == '__main__':
             try:
                 copytree(source, outdir + source.replace(':', ''))
                 logger.info('Recursively copied entire directory "{}" into output directory.'.format(source))
-            except Error:
+            except shutil_error:
                 logger.exception('Error copying directory "{}" into output directory. Details below:'.format(source))
                 continue
 
